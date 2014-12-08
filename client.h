@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>	// for killing the child thread
 #include <string.h>
 #include <unistd.h>
 #include <mqueue.h>
@@ -17,7 +18,12 @@ void *readFifo(void *fifoNameArg)
 	data_t response = {};	// fifo response
 	
 	serverFifoFd = open((char*)fifoNameArg, O_RDONLY);	// open the fifo
-		
+	if(serverFifoFd == -1)
+	{
+		printf("server doesn't exist\n");
+		return;
+	}
+	
 	for(;;)	// keep reading
 	{		
 		// Read, read, read...
@@ -28,12 +34,21 @@ void *readFifo(void *fifoNameArg)
 		}
 		else
 		{	// successful read
-			//printf("%d read\n", sizeof(response));
-			printf("%s\n", response.word);
+			
+			printf("%s", response.word);
+			if(strcmp(response.word, "server terminated") == 0)
+			{
+				printf("server finished\n");
+				break;
+			}
 		}
+		
+		
 		
 		//close(serverFifoFd);
 	}
+	
+	close(serverFifoFd);
 }
 
 // Check for server quit and exit commands
@@ -58,7 +73,10 @@ int checkInput(char *stri)
 	substring[11] = '\0';
 	
 	if(strcmp(substring, "server quit") == 0)
+	{
+		//printf("quit server\n");
 		return 1;
+	}
 	
 	return 0;
 }
@@ -77,6 +95,13 @@ int clientMain(char *fifoName)
 	int nbytes = 100;	// used in getline
 	char *stri = NULL;
 	char *substring = NULL;	// used to check for exit
+	
+		
+	if(open(fifoName, O_RDONLY) == -1)	// check to see if the server exists
+	{
+		printf("server fifo does not exist\n");
+		return 0;
+	}
 		
 	// Read from the server fifo on a separate process
 	fifeThread = pthread_create(&fifeThread, NULL, &readFifo, 
@@ -107,7 +132,7 @@ int clientMain(char *fifoName)
 			break;
 		}
 		
-		if(serverQuit == 0)	// don't try to send to a terminated server
+		if(serverQuit < 2)	// don't try to send to a terminated server
 		{
 			if(mq_send(mqd, (char*)&request, sizeof(request), 0) == -1)		// send the request via the message queue
 			{
@@ -115,10 +140,15 @@ int clientMain(char *fifoName)
 				exit(1);
 			}
 		}
+		
+		if(serverQuit == 1)
+			break;
 	}
 	
-
 	
+	pthread_join(fifeThread, NULL);
+	
+	exit(1);
 }
 
 #endif

@@ -146,7 +146,14 @@ int serverMain()
 		
 	}
 	
+	// send message to stop reading, to client
+	strcpy(responseData.word, "server terminated");
+	if(write(fifoWriter, &responseData, sizeof(data_t)) != sizeof(data_t))	// write response data to fifo
+		printf("Error writing to fifo\n");
+	
 	// close the fifo
+	unlink(fifoName);
+	
 	if(close(fifoWriter) == -1){
 		printf("Error closing fifo\n");
 	}
